@@ -1,0 +1,34 @@
+# Ignorar carpetas db en cualquier nivel
+**/db/
+
+
+# ----------------------------------------
+# Ignorar entornos virtuales
+mi_entorno/
+venv/
+.env/
+.envrc
+
+entornoImssComentarios/
+
+# Becarios/COGNITIVE/3SentimientosMarcaTwitter/twitter-sentiment-analysis-extension/
+
+# Ignorar archivos de Python compilados
+*.pyc
+__pycache__/
+
+# Ignorar configuraciones de Jupyter Notebook
+.ipynb_checkpoints/
+
+# Ignorar archivos de configuración del sistema operativo
+.DS_Store
+Thumbs.db
+
+
+#import openai
+#import os
+#from dotenv import load_dotenv
+
+#load_dotenv()  # Carga las variables desde un archivo .env
+
+#openai.api_key = os.getenv("OPENAI_API_KEY")
