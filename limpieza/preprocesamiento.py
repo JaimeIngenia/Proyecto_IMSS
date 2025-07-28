@@ -1,6 +1,16 @@
 import pandas as pd
 import re
 
+
+def limpiar_comentario(texto: str) -> str:
+    texto = texto.lower()
+    texto = re.sub(r"http\S+", "", texto)  # eliminar URLs
+    texto = re.sub(r"@\w+", "", texto)     # eliminar menciones
+    texto = re.sub(r"#\w+", "", texto)     # eliminar hashtags
+    texto = re.sub(r"[^a-záéíóúñü\s]", "", texto)  # eliminar caracteres especiales
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto
+
 def limpiar_un_texto(texto: str) -> str:
     """
     Limpia un texto individual eliminando URLs, menciones, hashtags y espacios.
@@ -29,3 +39,6 @@ def limpiar_texto(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("La columna 'tweet_text' no se encuentra en el DataFrame.")
     
     return df
+
+
+
