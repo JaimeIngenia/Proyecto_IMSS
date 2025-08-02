@@ -151,6 +151,19 @@ def extraer_datos_tweet(soup):
     return tweet_id, f'"{text}"', fecha, replies, reposts, likes, views
 
 
+def limpiar_para_csv(texto: str) -> str:
+    if not isinstance(texto, str):
+        return ""
+    # Reemplazar comas por punto y coma o espacio
+    texto = texto.replace(",", ";")
+    # Reemplazar comillas dobles por comillas simples
+    texto = texto.replace('"', "'")
+    # Eliminar saltos de línea
+    texto = texto.replace("\n", " ").replace("\r", " ")
+    # Quitar espacios dobles
+    texto = re.sub(r"\s+", " ", texto)
+    return texto.strip()
+
 
 def guardar_comentarios(
     tweet_id, tweet_text, soup, writer,
@@ -207,7 +220,7 @@ def guardar_comentarios(
         print("⚠️ Sin respuestas auténticas: grabo genérica.")
         writer.writerow({
             "tweet_id": tweet_id,
-            "tweet_text": tweet_text,
+            "tweet_text": limpiar_para_csv(tweet_text),
             "replies": replies,
             "comentario": '"**VERIFIQUÉ Y NO HAY NINGÚN COMENTARIO**"',
             "comentario_autor": '"**VERIFIQUÉ Y NO HAY NINGÚN COMENTARIO**"',
@@ -234,10 +247,10 @@ def guardar_comentarios(
 
         writer.writerow({
             "tweet_id": tweet_id,
-            "tweet_text": tweet_text,
+            "tweet_text": limpiar_para_csv(tweet_text),
             "replies": replies,
-            "comentario": f'"{clean(comentario_raw)}"',
-            "comentario_autor": f'"{clean(autor_raw)}"',
+            "comentario": limpiar_para_csv(comentario_raw),
+            "comentario_autor": limpiar_para_csv(autor_raw),
             "fecha_publicacion": fecha_com,
             "timestamp_extraccion": timestamp,
             "reposts": reposts,
