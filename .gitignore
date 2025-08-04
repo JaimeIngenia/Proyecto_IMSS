@@ -1,6 +1,16 @@
+# Ignorar archivos de configuración sensibles o de entorno
+.env
+
+# Ignorar archivos del contenedor y del entorno Docker
+docker-compose.yml
+Dockerfile
+
+
 # Ignorar carpetas db en cualquier nivel
 **/db/
 **/db_procesadas/
+/scripts
+/scripts/db
 
 # ----------------------------------------
 # Ignorar entornos virtuales
