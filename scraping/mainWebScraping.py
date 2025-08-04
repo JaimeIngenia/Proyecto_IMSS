@@ -1,7 +1,7 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from extractor_twitter import iniciar_sesion, navegar_a_perfil, extraer_y_guardar_comentarios
+from extractor_twitter_docker import iniciar_sesion, navegar_a_perfil, extraer_y_guardar_comentarios
 from datetime import datetime
 import os
 
@@ -59,22 +59,3 @@ finally:
     if driver:
         driver.quit()
 
-'''
-
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-
-options = Options()
-options.add_argument("--headless=new")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.binary_location = "/usr/bin/chromium-browser"
-
-service = Service("/usr/bin/chromedriver")
-driver = webdriver.Chrome(service=service, options=options)
-
-driver.get("https://www.google.com")
-print("✅ Navegador abierto correctamente:", driver.title)
-driver.quit()
-'''

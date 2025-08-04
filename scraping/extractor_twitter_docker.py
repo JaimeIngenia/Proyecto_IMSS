@@ -345,7 +345,7 @@ def extraer_y_guardar_comentarios(
     #max_tweets=30,
     n_scrolls=1,
     #n_scrolls=10,
-    scroll_pause=2
+    scroll_pause=3
     #scroll_pause=4
 ):
     wait = WebDriverWait(driver, 10)
