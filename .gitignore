@@ -1,6 +1,6 @@
 # Ignorar carpetas db en cualquier nivel
 **/db/
-
+**/db_procesadas/
 
 # ----------------------------------------
 # Ignorar entornos virtuales
