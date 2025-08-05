@@ -1,5 +1,35 @@
 import pandas as pd
 import re
+import json
+
+
+def limpiar_comentario(texto: str) -> str:
+    if not isinstance(texto, str):
+        return ""
+    
+    # Pasar a minúsculas
+    texto = texto.lower()
+
+    # Eliminar URLs
+    texto = re.sub(r"http\S+|www.\S+", "", texto)
+
+    # Eliminar menciones (@usuario) y hashtags
+    texto = re.sub(r"@\w+", "", texto)
+    texto = re.sub(r"#\w+", "", texto)
+
+    # Eliminar caracteres extraños pero mantener acentos, números y signos básicos
+    texto = re.sub(r"[^\w\sáéíóúñü.,!?¿¡]", "", texto, flags=re.UNICODE)
+
+    # Eliminar espacios múltiples
+    texto = re.sub(r"\s+", " ", texto).strip()
+
+    return texto
+
+def normalizar_comillas(texto: str) -> str:
+    if not isinstance(texto, str):
+        return ""
+    return texto.replace('"', '').replace("“", "").replace("”", "")
+
 
 def limpiar_un_texto(texto: str) -> str:
     """
@@ -14,18 +44,26 @@ def limpiar_un_texto(texto: str) -> str:
     return texto
 
 
-def limpiar_texto(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Renombra los valores de tweet_id por un número incremental y
-    limpia la columna 'tweet_text' aplicando transformaciones comunes.
-    Devuelve el DataFrame actualizado.
-    """
-    df = df.copy()
-    df['tweet_id'] = range(1, len(df) + 1)
 
-    if 'tweet_text' in df.columns:
-        df['tweet_text'] = df['tweet_text'].apply(limpiar_un_texto)
-    else:
-        raise ValueError("La columna 'tweet_text' no se encuentra en el DataFrame.")
-    
-    return df
+
+
+
+def limpiar_respuesta_ollama(respuesta: str) -> dict:
+    try:
+        texto = re.sub(r"```[a-zA-Z]*", "", respuesta)
+        texto = texto.replace("```", "")
+        texto = re.sub(r"//.*", "", texto)
+        texto = re.sub(r'"\s*([a-zA-Z_]+)\s*"\s*:', r'"\1":', texto)
+        texto = re.sub(r",\s*}", "}", texto)
+        texto = re.sub(r",\s*]", "]", texto)
+
+        data = json.loads(texto.strip())
+
+        # Aseguramos siempre las claves
+        sentimiento = data.get("sentimiento", "error").lower().strip()
+        categoria = data.get("categoria", "error").lower().strip()
+
+        return {"sentimiento": sentimiento, "categoria": categoria}
+    except Exception as e:
+        print(f"[DEBUG] Error parseando JSON: {e} -> Respuesta cruda: {respuesta}")
+        return {"sentimiento": "error", "categoria": "error"}
