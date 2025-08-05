@@ -49,6 +49,7 @@ def limpiar_un_texto(texto: str) -> str:
 
 
 def limpiar_respuesta_ollama(respuesta: str) -> dict:
+
     import re
     try:
         # Limpiar formato tipo markdown y comentarios
@@ -74,7 +75,9 @@ def limpiar_respuesta_ollama(respuesta: str) -> dict:
         categoria = data.get("categoria", "error").lower().strip()
 
         return {"sentimiento": sentimiento, "categoria": categoria}
+
     
     except Exception as e:
         print(f"[DEBUG] Error parseando JSON: {e} -> Respuesta cruda: {respuesta}")
         return {"sentimiento": "error", "categoria": "error"}
+

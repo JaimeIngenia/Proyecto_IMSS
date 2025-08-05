@@ -33,6 +33,7 @@ __pycache__/
 # Ignorar archivos de configuración del sistema operativo
 .DS_Store
 Thumbs.db
+main0.ipynb
 
 
 #import openai
