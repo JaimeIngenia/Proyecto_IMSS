@@ -49,7 +49,10 @@ def limpiar_un_texto(texto: str) -> str:
 
 
 def limpiar_respuesta_ollama(respuesta: str) -> dict:
+
+    import re
     try:
+        # Limpiar formato tipo markdown y comentarios
         texto = re.sub(r"```[a-zA-Z]*", "", respuesta)
         texto = texto.replace("```", "")
         texto = re.sub(r"//.*", "", texto)
@@ -57,13 +60,24 @@ def limpiar_respuesta_ollama(respuesta: str) -> dict:
         texto = re.sub(r",\s*}", "}", texto)
         texto = re.sub(r",\s*]", "]", texto)
 
+        # Agregar clave faltante si solo devuelve una parte
+        if '"categoria"' in texto and '"sentimiento"' not in texto:
+            texto = '{ "sentimiento": "neutro", ' + texto.strip()
+
+        if not texto.strip().startswith("{"):
+            texto = "{" + texto.strip()
+        if not texto.strip().endswith("}"):
+            texto = texto.strip() + "}"
+
         data = json.loads(texto.strip())
 
-        # Aseguramos siempre las claves
         sentimiento = data.get("sentimiento", "error").lower().strip()
         categoria = data.get("categoria", "error").lower().strip()
 
         return {"sentimiento": sentimiento, "categoria": categoria}
+
+    
     except Exception as e:
         print(f"[DEBUG] Error parseando JSON: {e} -> Respuesta cruda: {respuesta}")
         return {"sentimiento": "error", "categoria": "error"}
+
