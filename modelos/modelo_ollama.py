@@ -19,7 +19,7 @@ def probar_ollama_simple(texto="Hola, esto es una prueba"):
     }}
     No incluyas explicaciones, comentarios ni bloques de código.
     """
-    print("🤖 [TEST] Enviando prompt a Ollama...")
+    print(" [TEST] Enviando prompt a Ollama...")
     
     try:
         proceso = subprocess.Popen(
@@ -38,12 +38,12 @@ def probar_ollama_simple(texto="Hola, esto es una prueba"):
         # Intentar limpiar la respuesta
         return limpiar_respuesta_ollama(salida)
     except Exception as e:
-        print(f"❌ [ERROR] {e}")
+        print(f" [ERROR] {e}")
         return {"sentimiento": "error", "categoria": "error"}
 
 if __name__ == "__main__":
     resultado = probar_ollama_simple("cómo destruyen las instituciones")
-    print("✅ [RESULTADO FINAL]:", resultado)
+    print("👌 [RESULTADO FINAL]:", resultado)
     
     
     
