@@ -92,10 +92,17 @@ def preparar_archivo_csv(archivo_csv):
     """Prepara el archivo CSV para escritura, añadiendo encabezados si es necesario."""
     archivo_nuevo = not os.path.exists(archivo_csv)
     f = open(archivo_csv, "a", newline="", encoding="utf-8")
+    '''
     writer = csv.DictWriter(f, fieldnames=[
         "tweet_id", "tweet_text", "comentario", "comentario_autor",
         "fecha_publicacion", "timestamp_extraccion","replies",  
         "reposts", "likes", "views" 
+    ])
+    '''
+    writer = csv.DictWriter(f, fieldnames=[
+        "tweet_id", "tweet_text", "comentario", "comentario_autor",
+        "fecha_publicacion", "timestamp_extraccion","replies",  
+        "reposts", "views" 
     ])
     if archivo_nuevo:
         writer.writeheader()
@@ -130,6 +137,7 @@ def extraer_datos_tweet(soup):
             replies = m.group(1)
     
     # --- 4) Reposts y Likes ---
+    '''
     reposts_tag = elem.find("button", {"data-testid": "retweet"})
     raw_reposts = reposts_tag.text.strip() if reposts_tag else ""
     reposts = raw_reposts if raw_reposts.isdigit() else "0"
@@ -137,6 +145,10 @@ def extraer_datos_tweet(soup):
     likes_tag = elem.find("button", {"data-testid": "like"})
     raw_likes = likes_tag.text.strip() if likes_tag else ""
     likes = raw_likes if raw_likes.isdigit() else "0"
+    '''
+    reposts_tag = elem.find("button", {"data-testid": "retweet"})
+    raw_reposts = reposts_tag.text.strip() if reposts_tag else ""
+    reposts = raw_reposts if raw_reposts.isdigit() else "0"
     
     # --- 5) Views ---
     views = "0"
@@ -148,7 +160,8 @@ def extraer_datos_tweet(soup):
         if v:
             views = v.group(1).replace(",", "")
     
-    return tweet_id, f'"{text}"', fecha, replies, reposts, likes, views
+    #return tweet_id, f'"{text}"', fecha, replies, reposts, likes, views
+    return tweet_id, f'"{text}"', fecha, replies, reposts, views
 
 
 def limpiar_para_csv(texto: str) -> str:
@@ -165,9 +178,16 @@ def limpiar_para_csv(texto: str) -> str:
     return texto.strip()
 
 
+'''
 def guardar_comentarios(
     tweet_id, tweet_text, soup, writer,
     fecha_pub, replies, reposts, likes, views,
+    tweet_owner_raw
+):
+'''
+def guardar_comentarios(
+    tweet_id, tweet_text, soup, writer,
+    fecha_pub, replies, reposts, views,
     tweet_owner_raw
 ):
     print(f"↪️ [guardar_comentarios] para tweet_id={tweet_id}")
@@ -218,6 +238,7 @@ def guardar_comentarios(
     # 5) Si no hay, guardamos genérica
     if not auténticas:
         print("⚠️ Sin respuestas auténticas: grabo genérica.")
+        '''
         writer.writerow({
             "tweet_id": tweet_id,
             "tweet_text": limpiar_para_csv(tweet_text),
@@ -228,6 +249,18 @@ def guardar_comentarios(
             "timestamp_extraccion": timestamp,
             "reposts": reposts,
             "likes": likes,
+            "views": views
+        })
+        '''
+        writer.writerow({
+            "tweet_id": tweet_id,
+            "tweet_text": limpiar_para_csv(tweet_text),
+            "replies": replies,
+            "comentario": 'null',
+            "comentario_autor": 'null',
+            "fecha_publicacion": fecha_pub,
+            "timestamp_extraccion": timestamp,
+            "reposts": reposts,
             "views": views
         })
         return
@@ -245,6 +278,7 @@ def guardar_comentarios(
         time_div = com.find("time")
         fecha_com = time_div["datetime"] if (time_div and time_div.has_attr("datetime")) else fecha_pub
 
+        '''
         writer.writerow({
             "tweet_id": tweet_id,
             "tweet_text": limpiar_para_csv(tweet_text),
@@ -255,6 +289,18 @@ def guardar_comentarios(
             "timestamp_extraccion": timestamp,
             "reposts": reposts,
             "likes": likes,
+            "views": views
+        })
+        '''
+        writer.writerow({
+            "tweet_id": tweet_id,
+            "tweet_text": limpiar_para_csv(tweet_text),
+            "replies": replies,
+            "comentario": limpiar_para_csv(comentario_raw),
+            "comentario_autor": limpiar_para_csv(autor_raw),
+            "fecha_publicacion": fecha_com,
+            "timestamp_extraccion": timestamp,
+            "reposts": reposts,
             "views": views
         })
 
@@ -308,7 +354,8 @@ def procesar_tweet_por_url(driver, url, tweets_procesados, writer):
     soup = BeautifulSoup(driver.page_source, "html.parser")
 
     # 5) Extraemos datos del tweet principal
-    tweet_id, tweet_text, fecha_pub, replies, reposts, likes, views = extraer_datos_tweet(soup)
+    #tweet_id, tweet_text, fecha_pub, replies, reposts, likes, views = extraer_datos_tweet(soup)
+    tweet_id, tweet_text, fecha_pub, replies, reposts, views = extraer_datos_tweet(soup)
     print(f"  💡 Extraído: id={tweet_id} replies={replies}")
 
     # 6) Evitamos duplicados
@@ -328,9 +375,16 @@ def procesar_tweet_por_url(driver, url, tweets_procesados, writer):
     # 8) Guardamos todos los comentarios ya cargados
     guardar_comentarios(
         tweet_id, tweet_text, soup, writer,
+        fecha_pub, replies, reposts, views,
+        tweet_owner_raw
+    )
+    '''
+    guardar_comentarios(
+        tweet_id, tweet_text, soup, writer,
         fecha_pub, replies, reposts, likes, views,
         tweet_owner_raw
     )
+    '''
 
     # 9) Cerramos pestaña y volvemos
     print("  🔙 Cerrando pestaña y volviendo…")
