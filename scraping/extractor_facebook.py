@@ -15,7 +15,7 @@ POLL = 0.2            # frecuencia de polling en esperas
 WAIT_AFTER_LOGIN = 25 # espera total para quedar logueado, sin CAPTCHA
 
 
-def recolectar_links_publicaciones(driver, max_links=3, max_scrolls=20):
+def recolectar_links_publicaciones(driver, max_links=3, max_scrolls=40):
     """
     Hace scroll en la página y devuelve hasta max_links permalinks únicos de publicaciones.
     Usa la función existente recolectar_publicaciones_pagina.
@@ -37,6 +37,7 @@ def recolectar_links_publicaciones(driver, max_links=3, max_scrolls=20):
             if len(links) >= max_links:
                 break
     return links
+
 
 
 def guardar_links_csv(links, ruta_csv, pagina_url="https://www.facebook.com/IMSSmx"):
@@ -63,28 +64,6 @@ def guardar_links_csv(links, ruta_csv, pagina_url="https://www.facebook.com/IMSS
 
 
 
-def _esperar_y_enfocar_recaptcha(driver, timeout=30, poll=0.2):
-    driver.switch_to.default_content()
-    # 1) Espera iframe visible (no solo presente)
-    iframe = WebDriverWait(driver, timeout, poll_frequency=poll).until(
-        EC.visibility_of_element_located((By.CSS_SELECTOR, "iframe[src*='api2/anchor'], iframe[title*='reCAPTCHA']"))
-    )
-    # 2) Cambia al iframe
-    WebDriverWait(driver, timeout, poll_frequency=poll).until(
-        EC.frame_to_be_available_and_switch_to_it(iframe)
-    )
-    # 3) Espera el checkbox visible
-    checkbox = WebDriverWait(driver, timeout, poll_frequency=poll).until(
-        EC.visibility_of_element_located((By.CSS_SELECTOR, "#recaptcha-anchor"))
-    )
-    # 4) Centra y enfoca (NO clic)
-    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
-    try:
-        checkbox.send_keys("")  # foco suave
-    except Exception:
-        pass
-    driver.switch_to.default_content()
-    return True
 
 
 ########################################################
@@ -97,10 +76,17 @@ def navegar_a_pagina(driver, url_pagina: str, timeout=12, poll=0.2):
     print(f"🧭 Navegando a la página: {url_pagina}")
     driver.get(url_pagina)
 
-    # Asegura que estamos en la página (role=main presente)
+    # Espera a que el contenido principal del feed sea visible (más específico)
     WebDriverWait(driver, timeout, poll_frequency=poll).until(
         EC.presence_of_element_located((By.CSS_SELECTOR, "div[role='main']"))
     )
+
+    # Ahora espera a que las publicaciones estén visibles y listas para la interacción
+    WebDriverWait(driver, timeout, poll_frequency=poll).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "div[role='article']"))
+    )
+
+    print("✅ Página cargada y lista para interactuar.")
 
     # A veces Facebook abre la pestaña "Información"; intentamos ver contenido tipo publicaciones
     # Si existe una pestaña "Publicaciones"/"Posts", haz click (no bloqueante si no aparece):
