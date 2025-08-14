@@ -57,7 +57,15 @@ def guardar_links_csv(links, ruta_csv, pagina_url="https://www.facebook.com/IMSS
                 "pagina_url": pagina_url,
                 "permalink": item.get("permalink", ""),
                 "autor": item.get("autor", ""),
-                "text_publicacion": (item.get("texto", "") or "").replace("\r", " ").replace("\n", " ").strip(),
+                #"text_publicacion": (item.get("texto", "") or "").replace("\r", " ").replace("\n", " ").strip(),
+                "text_publicacion": (
+                    (item.get("texto", "") or "")
+                    .replace(",", ";")   # <-- esto es lo que agregamos
+                    .replace("\r", " ")
+                    .replace("\n", " ")
+                    .strip()
+                )
+
             })
     print(f"💾 Guardado: {ruta_csv} ({len(links)} links)")
     return ruta_csv
