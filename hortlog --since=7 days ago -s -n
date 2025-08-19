@@ -1,0 +1,31 @@
+[33mcommit 4f5f9c6db755045fbc62051d413ee7be9802a8f4[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32m86aaumr04/JaimeDev[m[33m, [m[1;31morigin/86aaumr04/JaimeDev[m[33m)[m
+Author: JaimeIngenia <jamoncayop@unal.edu.co>
+Date:   Thu Aug 14 06:32:10 2025 -0500
+
+    Extrayendo 10 tweets
+
+ 2 files changed, 21 insertions(+), 11 deletions(-)
+
+[33mcommit 784b508eb638f297e98154ea1b5ea734c850b57c[m
+Author: JaimeIngenia <jamoncayop@unal.edu.co>
+Date:   Wed Aug 13 14:33:47 2025 -0500
+
+    Recoleccion de 3 publicaciones facebook
+
+ 2 files changed, 29 insertions(+), 41 deletions(-)
+
+[33mcommit 84ca5614c139969fab943b4dbe3620dab27d7182[m
+Author: JaimeIngenia <jamoncayop@unal.edu.co>
+Date:   Wed Aug 13 14:14:10 2025 -0500
+
+    Recolección de datos por link solo uno funcional
+
+ 3 files changed, 355 insertions(+), 138 deletions(-)
+
+[33mcommit 592960620638d8c6733128a884f0a75544b38f93[m
+Author: JaimeIngenia <jamoncayop@unal.edu.co>
+Date:   Tue Aug 12 13:22:29 2025 -0500
+
+    Inicio de sesión facebook ok
+
+ 3 files changed, 343 insertions(+), 66 deletions(-)
