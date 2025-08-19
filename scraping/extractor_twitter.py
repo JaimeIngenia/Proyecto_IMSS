@@ -21,33 +21,30 @@ from selenium.common.exceptions import NoSuchElementException
 from bs4 import BeautifulSoup, NavigableString
 
 def extraer_entidades(div_text):
-    """
-    Devuelve (hashtags, menciones, urls, cashtags) como listas sin duplicados.
-    - hashtags: ['#IMSS', '#Salud']
-    - menciones: ['@Tu_IMSS', '@salud_mx']
-    - urls: lista de URLs (intenta usar 'title' si existe, si no 'href')
-    - cashtags: ['$AAPL', '$TSLA']
-    """
     if not div_text:
         return [], [], [], []
 
-    def uniq(seq):
-        return list(dict.fromkeys(seq))
+    def uniq(seq): return list(dict.fromkeys(seq))
 
     hashtags, menciones, urls, cashtags = [], [], [], []
+
+    # 1) Por enlaces (cuando los hay)
     for a in div_text.find_all("a", href=True):
         href = a["href"]
         txt = a.get_text(strip=True)
-
         if "/hashtag/" in href:
             tag = href.split("/hashtag/")[1].split("?")[0]
             hashtags.append("#" + tag)
-        elif txt.startswith("@"):  # mención visible
+        elif txt.startswith("@"):
             menciones.append(txt)
         elif txt.startswith("$"):
             cashtags.append(txt)
         elif href.startswith("http"):
             urls.append(a.get("title") or href)
+
+    # 2) Fallback por texto plano (por si no hay <a>)
+    text_plain = div_text.get_text(" ", strip=True)
+    hashtags += re.findall(r"#\w+", text_plain, flags=re.UNICODE)
 
     return uniq(hashtags), uniq(menciones), uniq(urls), uniq(cashtags)
 
@@ -124,25 +121,24 @@ def cargar_tweets_procesados(archivo_csv):
 
 def preparar_archivo_csv(archivo_csv):
     """Prepara el archivo CSV para escritura, añadiendo encabezados si es necesario."""
+    fieldnames = [
+        "tweet_id", "tweet_text", "comentario", "comentario_autor",
+        "fecha_publicacion", "timestamp_extraccion","replies",
+        "reposts", "likes", "views",
+        "hashtags_tweet", "hashtags_comentario"  # ← columnas nuevas
+    ]
+
     archivo_nuevo = not os.path.exists(archivo_csv)
     f = open(archivo_csv, "a", newline="", encoding="utf-8")
-    
-    writer = csv.DictWriter(f, fieldnames=[
-        "tweet_id", "tweet_text", "comentario", "comentario_autor",
-        "fecha_publicacion", "timestamp_extraccion","replies",  
-        "reposts", "likes", "views" ,
-        "hashtags_tweet", "hashtags_comentario"
-    ])
-    
-    '''
-    writer = csv.DictWriter(f, fieldnames=[
-        "tweet_id", "tweet_text", "comentario", "comentario_autor",
-        "fecha_publicacion", "timestamp_extraccion","replies",  
-        "reposts", "views" 
-    ])
-    '''
+    writer = csv.DictWriter(f, fieldnames=fieldnames)
+
     if archivo_nuevo:
         writer.writeheader()
+
+    # DEBUG útil: confirma columnas y ruta
+    print(f"📄 Escribiendo en: {archivo_csv}")
+    print(f"🧾 Columnas CSV: {writer.fieldnames}")
+
     return f, writer
 
 # Refactor
@@ -199,7 +195,7 @@ def extraer_datos_tweet(soup):
         if v:
             views = v.group(1).replace(",", "")
     
-    return tweet_id, f'"{text}"', fecha, replies, reposts, likes, views
+    return tweet_id, text, fecha, replies, reposts, likes, views
     #return tweet_id, f'"{text}"', fecha, replies, reposts, views
 
 
@@ -424,6 +420,7 @@ def procesar_tweet_por_url(driver, url, tweets_procesados, writer):
             "aria-label": re.compile(r"(Timeline|Cronolog[ií]a):\s*(Conversation|Conversaci[oó]n)", re.I)
         })
         loaded = (len(conv.find_all("article", {"data-testid": "tweet"})) - 1) if conv else 0
+
 
         print(f"    🔄 Replies cargados: {loaded}")
         if loaded == prev_count:
