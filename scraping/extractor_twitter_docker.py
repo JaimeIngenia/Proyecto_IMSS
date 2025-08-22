@@ -20,91 +20,6 @@ import re
 from selenium.common.exceptions import NoSuchElementException
 from bs4 import BeautifulSoup, NavigableString
 
-def visible_text_with_entities(div):
-    """
-    Devuelve el texto visible tal cual se muestra en X:
-    - Sustituye emojis <img alt="…"> por su alt (el propio emoji).
-    - Normaliza hashtags: <a href="/hashtag/TAG?..."> → "#TAG"
-    - Normaliza menciones: <a href="/Usuario?..."> → "@Usuario"
-    - Limpia espacios y 'zero-width' invisibles.
-    """
-    if not div:
-        return ""
-
-    # Trabaja sobre una copia para no alterar el árbol original
-    clone = BeautifulSoup(str(div), "html.parser")
-
-    # 1) Emojis: <img alt="🙂"> → "🙂"
-    for img in clone.find_all("img"):
-        alt = img.get("alt")
-        if alt:
-            img.replace_with(alt)
-
-    # 2) Hashtags y menciones
-    for a in clone.find_all("a", href=True):
-        href = a["href"]
-        txt = a.get_text("", strip=True)
-        replacement = None
-
-        # Hashtag: /hashtag/TAG
-        if "/hashtag/" in href:
-            tag = href.split("/hashtag/", 1)[1].split("?", 1)[0]
-            if tag:
-                replacement = "#" + tag
-
-        # Mención: /Usuario  (evita rutas del sistema)
-        elif href.startswith("/") and not href.startswith(("/hashtag/", "/search", "/i/")):
-            user = href.split("?", 1)[0].strip("/").split("/", 1)[0]
-            # si el texto no empieza con @, prefija
-            if user and not txt.startswith("@"):
-                replacement = "@" + user
-
-        if replacement:
-            a.replace_with(replacement)
-        else:
-            # Conserva el texto visible del enlace
-            a.replace_with(txt)
-
-    # 3) Texto plano + limpieza de separadores invisibles
-    text = clone.get_text(" ", strip=True)
-    text = re.sub(r"[\u200B\u200C\u200D\u2060\uFEFF]", "", text)  # zero-width
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-
-
-
-def extraer_entidades(div_text):
-    if not div_text:
-        return [], [], [], []
-
-    def uniq(seq): return list(dict.fromkeys(seq))
-
-    hashtags, menciones, urls, cashtags = [], [], [], []
-
-    # 1) Por enlaces (cuando los hay)
-    for a in div_text.find_all("a", href=True):
-        href = a["href"]
-        txt = a.get_text(strip=True)
-        if "/hashtag/" in href:
-            tag = href.split("/hashtag/")[1].split("?")[0]
-            hashtags.append("#" + tag)
-        elif txt.startswith("@"):
-            menciones.append(txt)
-        elif txt.startswith("$"):
-            cashtags.append(txt)
-        elif href.startswith("http"):
-            urls.append(a.get("title") or href)
-
-    # 2) Fallback por texto plano (por si no hay <a>)
-    text_plain = div_text.get_text(" ", strip=True)
-    hashtags += re.findall(r"#\w+", text_plain, flags=re.UNICODE)
-
-    return uniq(hashtags), uniq(menciones), uniq(urls), uniq(cashtags)
-
-
-
-
 def iniciar_sesion(driver,user='', pwd='', username=''):
     driver.get('https://twitter.com/login')
 
@@ -175,66 +90,65 @@ def cargar_tweets_procesados(archivo_csv):
 
 def preparar_archivo_csv(archivo_csv):
     """Prepara el archivo CSV para escritura, añadiendo encabezados si es necesario."""
-    fieldnames = [
-        "tweet_id", "tweet_text", "comentario", "comentario_autor",
-        "fecha_publicacion", "timestamp_extraccion","replies",
-        "reposts", "likes", "views",
-        "hashtags_tweet", "hashtags_comentario"  # ← columnas nuevas
-    ]
-
     archivo_nuevo = not os.path.exists(archivo_csv)
     f = open(archivo_csv, "a", newline="", encoding="utf-8")
-    writer = csv.DictWriter(f, fieldnames=fieldnames)
-
+    writer = csv.DictWriter(f, fieldnames=[
+        "tweet_id", "tweet_text", "comentario", "comentario_autor",
+        "fecha_publicacion", "timestamp_extraccion","replies",  
+        "reposts", "likes", "views" 
+    ])
     if archivo_nuevo:
         writer.writeheader()
-
-    # DEBUG útil: confirma columnas y ruta
-    print(f"📄 Escribiendo en: {archivo_csv}")
-    print(f"🧾 Columnas CSV: {writer.fieldnames}")
-
     return f, writer
 
+# Refactor
+
 def extraer_datos_tweet(soup):
-    """Devuelve (tweet_id, tweet_text, fecha, replies, reposts, likes, views, hashtags_tweet)."""
+    """
+    Devuelve (tweet_id, tweet_text, fecha, replies, reposts, likes, views).
+    Ahora el regex de replies reconoce tanto '1 reply' como '4 replies'.
+    """
     elem = soup.find("article", {"data-testid": "tweet"})
-    text_tag = elem.find("div", {"data-testid": "tweetText"}) if elem else None
-    #raw_text = text_tag.get_text(" ", strip=True) if text_tag else ""
-    #text = re.sub(r"\s+", " ", raw_text).strip()
-    text = visible_text_with_entities(text_tag)
+    
+    # --- 1) Texto y ID ---
+    text_tag = elem.find("div", {"data-testid": "tweetText"})
+    raw_text = text_tag.get_text(" ", strip=True) if text_tag else ""
+    text = re.sub(r"\s+", " ", raw_text).strip()
     tweet_id = "id_" + text[:30].replace(" ", "_")
-
-    time_tag = elem.find("time") if elem else None
+    
+    # --- 2) Fecha ---
+    time_tag = elem.find("time")
     fecha = time_tag["datetime"] if (time_tag and time_tag.has_attr("datetime")) else ""
-
+    
+    # --- 3) Replies (comentarios) ---
     replies = "0"
-    group = elem.find("div", {"role": "group", "aria-label": True}) if elem else None
+    group = elem.find("div", {"role": "group", "aria-label": True})
     if group:
-        aria = group["aria-label"]
+        aria = group["aria-label"]  # ej. "4 replies, 7 reposts, 29 likes, 2760 views"
         m = re.search(r"(\d+)\s+repl(?:y|ies)", aria, re.IGNORECASE)
-        if m: replies = m.group(1)
-
-    reposts_tag = elem.find("button", {"data-testid": "retweet"}) if elem else None
+        if m:
+            replies = m.group(1)
+    
+    # --- 4) Reposts y Likes ---
+    reposts_tag = elem.find("button", {"data-testid": "retweet"})
     raw_reposts = reposts_tag.text.strip() if reposts_tag else ""
     reposts = raw_reposts if raw_reposts.isdigit() else "0"
-
-    likes_tag = elem.find("button", {"data-testid": "like"}) if elem else None
+    
+    likes_tag = elem.find("button", {"data-testid": "like"})
     raw_likes = likes_tag.text.strip() if likes_tag else ""
     likes = raw_likes if raw_likes.isdigit() else "0"
-
+    
+    # --- 5) Views ---
     views = "0"
-    label = elem.find(lambda t: t.name == "span" and "view" in t.get_text(strip=True).lower()) if elem else None
+    # Busca un span que contenga la palabra "view" o "views"
+    label = elem.find(lambda t: t.name == "span" and "view" in t.get_text(strip=True).lower())
     if label:
         pt = label.parent.get_text(" ", strip=True)
         v = re.search(r"([\d,]+)\s+view", pt, re.IGNORECASE)
-        if v: views = v.group(1).replace(",", "")
-
-    # ← Hashtags del TWEET PRINCIPAL (por <a> y por texto)
-    ht_tweet, _, _, _ = extraer_entidades(text_tag)
-    hashtags_tweet = "|".join(ht_tweet) if ht_tweet else ""
-
-    return tweet_id, text, fecha, replies, reposts, likes, views, hashtags_tweet
-
+        if v:
+            views = v.group(1).replace(",", "")
+    
+    return tweet_id, f'"{text}"', fecha, replies, reposts, likes, views
 
 
 def limpiar_para_csv(texto: str) -> str:
@@ -251,34 +165,18 @@ def limpiar_para_csv(texto: str) -> str:
     return texto.strip()
 
 
-
 def guardar_comentarios(
     tweet_id, tweet_text, soup, writer,
     fecha_pub, replies, reposts, likes, views,
-    tweet_owner_raw,hashtags_tweet=""
-):
-
-    '''
-def guardar_comentarios(
-    tweet_id, tweet_text, soup, writer,
-    fecha_pub, replies, reposts, views,
     tweet_owner_raw
 ):
-    '''
     print(f"↪️ [guardar_comentarios] para tweet_id={tweet_id}")
     tweet_owner = tweet_owner_raw.split("·")[0].strip()
-    
-    # === Hashtags del tweet principal ===
-    orig_article = soup.find("article", {"data-testid": "tweet"})
-    orig_text_div = orig_article.find("div", {"data-testid": "tweetText"}) if orig_article else None
-    ht_tweet, _, _, _ = extraer_entidades(orig_text_div)
-    hashtags_tweet = "|".join(ht_tweet) if ht_tweet else ""
 
     # 1) Replies oficiales
     conv = soup.find(
         "div",
-        {"role": "region", "aria-label": re.compile(r"(Timeline|Cronolog[ií]a):\s*(Conversation|Conversaci[oó]n)", re.I)
-}
+        {"role": "region", "aria-label": re.compile(r"Timeline: Conversation")}
     )
     oficiales = conv.find_all("article", {"data-testid": "tweet"}) if conv else []
 
@@ -308,58 +206,38 @@ def guardar_comentarios(
             filt.append(com)
 
     # ——— [4bis] Recortar a 'replies' máximo ———
-    autenticas = filt
-    print(f"→ auténticas tras filtrar: {len(autenticas)}")
+    max_rep = int(replies or 0)
+    auténticas = filt
+    #auténticas = filt[:max_rep]
+    print(f"→ auténticas tras filtrar y recortar a {len(auténticas)}/{max_rep}")
 
     timestamp = datetime.now().isoformat()
     def clean(txt):
         return re.sub(r"\s+", " ", txt.replace("\n"," ")).strip()
 
     # 5) Si no hay, guardamos genérica
-    if not autenticas:
+    if not auténticas:
         print("⚠️ Sin respuestas auténticas: grabo genérica.")
-        
         writer.writerow({
             "tweet_id": tweet_id,
             "tweet_text": limpiar_para_csv(tweet_text),
             "replies": replies,
-            "comentario": "**VERIFIQUÉ Y NO HAY NINGÚN COMENTARIO**",
-            "comentario_autor": "**VERIFIQUÉ Y NO HAY NINGÚN COMENTARIO**",
+            "comentario": '"**VERIFIQUÉ Y NO HAY NINGÚN COMENTARIO**"',
+            "comentario_autor": '"**VERIFIQUÉ Y NO HAY NINGÚN COMENTARIO**"',
             "fecha_publicacion": fecha_pub,
             "timestamp_extraccion": timestamp,
             "reposts": reposts,
             "likes": likes,
-            "views": views,
-            #"hashtags_tweet": limpiar_para_csv(hashtags_tweet),
-            "hashtags_tweet": hashtags_tweet,
-            "hashtags_comentario": hashtags_comentario
-        })
-        
-        
-        '''
-        writer.writerow({
-            "tweet_id": tweet_id,
-            "tweet_text": limpiar_para_csv(tweet_text),
-            "replies": replies,
-            "comentario": 'null',
-            "comentario_autor": 'null',
-            "fecha_publicacion": fecha_pub,
-            "timestamp_extraccion": timestamp,
-            "reposts": reposts,
             "views": views
         })
-        '''
         return
 
     # 6) Guardar cada reply auténtica
-    for idx, com in enumerate(autenticas, start=1):
+    for idx, com in enumerate(auténticas, start=1):
         print(f"🔄 Guardando respuesta auténtica #{idx}")
         # texto
         text_div = com.find("div", {"data-testid": "tweetText"})
         comentario_raw = text_div.get_text(" ", strip=True) if text_div else "Comentario no encontrado"
-        # Hashtags del comentario
-        ht_com, _, _, _ = extraer_entidades(text_div)
-        hashtags_comentario = "|".join(ht_com) if ht_com else ""
         # autor
         autor_div = com.find("div", {"data-testid": "User-Name"})
         autor_raw = autor_div.get_text(" ", strip=True) if autor_div else "Autor desconocido"
@@ -367,7 +245,6 @@ def guardar_comentarios(
         time_div = com.find("time")
         fecha_com = time_div["datetime"] if (time_div and time_div.has_attr("datetime")) else fecha_pub
 
-        
         writer.writerow({
             "tweet_id": tweet_id,
             "tweet_text": limpiar_para_csv(tweet_text),
@@ -378,140 +255,88 @@ def guardar_comentarios(
             "timestamp_extraccion": timestamp,
             "reposts": reposts,
             "likes": likes,
-            "views": views,
-            "hashtags_tweet": limpiar_para_csv(hashtags_tweet),
-            #"hashtags_comentario": limpiar_para_csv(hashtags_comentario)
-            "hashtags_comentario": hashtags_comentario
-        })
-        
-        '''
-        
-        writer.writerow({
-            "tweet_id": tweet_id,
-            "tweet_text": limpiar_para_csv(tweet_text),
-            "replies": replies,
-            "comentario": limpiar_para_csv(comentario_raw),
-            "comentario_autor": limpiar_para_csv(autor_raw),
-            "fecha_publicacion": fecha_com,
-            "timestamp_extraccion": timestamp,
-            "reposts": reposts,
             "views": views
         })
-        '''
 
 # Verificar 
 
 def procesar_tweet_por_url(driver, url, tweets_procesados, writer):
     print(f"\n▶️  Abriendo tweet en nueva pestaña: {url}")
+    # 1) Abrir en pestaña nueva y cambiar contexto
     driver.execute_script("window.open(arguments[0], '_blank');", url)
     driver.switch_to.window(driver.window_handles[-1])
-
-    # Espera a que aparezca el artículo del tweet (no al URL)
-    try:
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'article[data-testid="tweet"]'))
-        )
-    except TimeoutException:
-        print("  ⏱️ Timeout esperando el tweet. Cierro esta pestaña y continúo con el siguiente.")
-        driver.close()
-        if driver.window_handles:
-            driver.switch_to.window(driver.window_handles[0])
-        return
-
+    WebDriverWait(driver, 15).until(lambda d: "/status/" in d.current_url)
     sleep(1)
 
-    # Scroll inicial
+    # 2) Reveal inicial de replies y posible spam
     for i in range(3):
         driver.execute_script("window.scrollBy(0, 800);")
         sleep(0.7)
-
-    # Botón de “spam probable” en ES/EN (si aparece)
     try:
-        spam_btn = None
-        for xp in [
-            "//span[normalize-space(.)='Show probable spam']",
-            "//span[normalize-space(.)='Mostrar spam probable']",
-            "//span[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'spam')]"
-        ]:
-            els = driver.find_elements(By.XPATH, xp)
-            if els:
-                spam_btn = els[0]
-                break
-        if spam_btn:
-            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", spam_btn)
-            sleep(0.5)
-            spam_btn.click()
-            sleep(1)
-    except Exception:
+        spam_btn = driver.find_element(
+            By.XPATH, "//span[normalize-space(text())='Show probable spam']"
+        )
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", spam_btn)
+        sleep(0.5)
+        spam_btn.click()
+        sleep(1)
+    except NoSuchElementException:
         pass
 
-    # Bucle de carga de replies
+    # 3) Bucle hasta que ya no cargue más replies
     prev_count = -1
     while True:
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         sleep(1)
 
+        # Capturamos el HTML y contamos replies (artículos menos el original)
         html = driver.page_source
         soup_tmp = BeautifulSoup(html, "html.parser")
         conv = soup_tmp.find("div", {
             "role": "region",
-            "aria-label": re.compile(r"(Timeline|Cronolog[ií]a):\s*(Conversation|Conversaci[oó]n)", re.I)
+            "aria-label": re.compile(r"Timeline: Conversation")
         })
         loaded = (len(conv.find_all("article", {"data-testid": "tweet"})) - 1) if conv else 0
-
 
         print(f"    🔄 Replies cargados: {loaded}")
         if loaded == prev_count:
             break
         prev_count = loaded
 
+    # 4) Ya con todo cargado, parseamos el resultado final
     print(f"  🔍 Tamaño de page_source tras spam: {len(driver.page_source)}")
     soup = BeautifulSoup(driver.page_source, "html.parser")
 
     # 5) Extraemos datos del tweet principal
-    #tweet_id, tweet_text, fecha_pub, replies, reposts, likes, views = extraer_datos_tweet(soup)
-    tweet_id, tweet_text, fecha_pub, replies, reposts, likes, views, hashtags_tweet = extraer_datos_tweet(soup)
-
+    tweet_id, tweet_text, fecha_pub, replies, reposts, likes, views = extraer_datos_tweet(soup)
     print(f"  💡 Extraído: id={tweet_id} replies={replies}")
 
-    # 6) Evitar duplicados
+    # 6) Evitamos duplicados
     if tweet_id in tweets_procesados:
         print("  ⚠️ ya procesado, cierro y regreso.")
         driver.close()
-        if driver.window_handles:
-            driver.switch_to.window(driver.window_handles[0])
+        driver.switch_to.window(driver.window_handles[0])
         return
     tweets_procesados.add(tweet_id)
 
-    # 7) Capturar autor original (con guardas)
-    art = soup.find("article", {"data-testid": "tweet"})
-    owner_tag = art.find("div", {"data-testid": "User-Name"}) if art else None
+    # 7) Capturamos autor original
+    owner_tag = soup.find("article", {"data-testid": "tweet"}) \
+                    .find("div", {"data-testid": "User-Name"})
     tweet_owner_raw = owner_tag.get_text(" ", strip=True) if owner_tag else ""
     print(f"  👤 Autor original: {tweet_owner_raw}")
 
-    # 8) Guardar comentarios
-    '''
+    # 8) Guardamos todos los comentarios ya cargados
     guardar_comentarios(
         tweet_id, tweet_text, soup, writer,
         fecha_pub, replies, reposts, likes, views,
         tweet_owner_raw
     )
-    '''
-    guardar_comentarios(
-        tweet_id, tweet_text, soup, writer,
-        fecha_pub, replies, reposts, likes, views,
-        tweet_owner_raw,
-        hashtags_tweet        # ← nuevo arg
-    )
-    
-    
 
-    # 9) Cerrar y volver
+    # 9) Cerramos pestaña y volvemos
     print("  🔙 Cerrando pestaña y volviendo…")
     driver.close()
-    if driver.window_handles:
-        driver.switch_to.window(driver.window_handles[0])
- 
+    driver.switch_to.window(driver.window_handles[0])
+    
         
 def extraer_y_guardar_comentarios(
     driver,
@@ -520,7 +345,7 @@ def extraer_y_guardar_comentarios(
     #max_tweets=30,
     n_scrolls=1,
     #n_scrolls=10,
-    scroll_pause=2
+    scroll_pause=3
     #scroll_pause=4
 ):
     wait = WebDriverWait(driver, 10)
@@ -565,19 +390,6 @@ def extraer_y_guardar_comentarios(
     try:
         for idx, url in enumerate(tweet_links, 1):
             print(f"\n🔹 Procesando URL #{idx}/{len(tweet_links)}: {url}")
-            try:
-                procesar_tweet_por_url(driver, url, tweets_procesados, writer)
-            except Exception as e:
-                print(f"  ⚠️ Error procesando {url}: {repr(e)}")
-                # Intenta recuperar el foco de la ventana principal
-                try:
-                    if len(driver.window_handles) > 1:
-                        driver.close()
-                except Exception:
-                    pass
-                if driver.window_handles:
-                    driver.switch_to.window(driver.window_handles[0])
-                continue
-
+            procesar_tweet_por_url(driver, url, tweets_procesados, writer)
     finally:
         f.close()
