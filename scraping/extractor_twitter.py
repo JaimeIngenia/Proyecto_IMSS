@@ -20,6 +20,60 @@ import re
 from selenium.common.exceptions import NoSuchElementException
 from bs4 import BeautifulSoup, NavigableString
 
+def visible_text_with_entities(div):
+    """
+    Devuelve el texto visible tal cual se muestra en X:
+    - Sustituye emojis <img alt="…"> por su alt (el propio emoji).
+    - Normaliza hashtags: <a href="/hashtag/TAG?..."> → "#TAG"
+    - Normaliza menciones: <a href="/Usuario?..."> → "@Usuario"
+    - Limpia espacios y 'zero-width' invisibles.
+    """
+    if not div:
+        return ""
+
+    # Trabaja sobre una copia para no alterar el árbol original
+    clone = BeautifulSoup(str(div), "html.parser")
+
+    # 1) Emojis: <img alt="🙂"> → "🙂"
+    for img in clone.find_all("img"):
+        alt = img.get("alt")
+        if alt:
+            img.replace_with(alt)
+
+    # 2) Hashtags y menciones
+    for a in clone.find_all("a", href=True):
+        href = a["href"]
+        txt = a.get_text("", strip=True)
+        replacement = None
+
+        # Hashtag: /hashtag/TAG
+        if "/hashtag/" in href:
+            tag = href.split("/hashtag/", 1)[1].split("?", 1)[0]
+            if tag:
+                replacement = "#" + tag
+
+        # Mención: /Usuario  (evita rutas del sistema)
+        elif href.startswith("/") and not href.startswith(("/hashtag/", "/search", "/i/")):
+            user = href.split("?", 1)[0].strip("/").split("/", 1)[0]
+            # si el texto no empieza con @, prefija
+            if user and not txt.startswith("@"):
+                replacement = "@" + user
+
+        if replacement:
+            a.replace_with(replacement)
+        else:
+            # Conserva el texto visible del enlace
+            a.replace_with(txt)
+
+    # 3) Texto plano + limpieza de separadores invisibles
+    text = clone.get_text(" ", strip=True)
+    text = re.sub(r"[\u200B\u200C\u200D\u2060\uFEFF]", "", text)  # zero-width
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+
+
 def extraer_entidades(div_text):
     if not div_text:
         return [], [], [], []
@@ -141,62 +195,46 @@ def preparar_archivo_csv(archivo_csv):
 
     return f, writer
 
-# Refactor
-
 def extraer_datos_tweet(soup):
-    """
-    Devuelve (tweet_id, tweet_text, fecha, replies, reposts, likes, views,hashtags_tweet).
-    Ahora el regex de replies reconoce tanto '1 reply' como '4 replies'.
-    """
+    """Devuelve (tweet_id, tweet_text, fecha, replies, reposts, likes, views, hashtags_tweet)."""
     elem = soup.find("article", {"data-testid": "tweet"})
-    
-    # --- 1) Texto y ID ---
-    text_tag = elem.find("div", {"data-testid": "tweetText"})
-    raw_text = text_tag.get_text(" ", strip=True) if text_tag else ""
-    text = re.sub(r"\s+", " ", raw_text).strip()
+    text_tag = elem.find("div", {"data-testid": "tweetText"}) if elem else None
+    #raw_text = text_tag.get_text(" ", strip=True) if text_tag else ""
+    #text = re.sub(r"\s+", " ", raw_text).strip()
+    text = visible_text_with_entities(text_tag)
     tweet_id = "id_" + text[:30].replace(" ", "_")
-    
-    # --- 2) Fecha ---
-    time_tag = elem.find("time")
+
+    time_tag = elem.find("time") if elem else None
     fecha = time_tag["datetime"] if (time_tag and time_tag.has_attr("datetime")) else ""
-    
-    # --- 3) Replies (comentarios) ---
+
     replies = "0"
-    group = elem.find("div", {"role": "group", "aria-label": True})
+    group = elem.find("div", {"role": "group", "aria-label": True}) if elem else None
     if group:
-        aria = group["aria-label"]  # ej. "4 replies, 7 reposts, 29 likes, 2760 views"
+        aria = group["aria-label"]
         m = re.search(r"(\d+)\s+repl(?:y|ies)", aria, re.IGNORECASE)
-        if m:
-            replies = m.group(1)
-    
-    # --- 4) Reposts y Likes ---
-    
-    reposts_tag = elem.find("button", {"data-testid": "retweet"})
+        if m: replies = m.group(1)
+
+    reposts_tag = elem.find("button", {"data-testid": "retweet"}) if elem else None
     raw_reposts = reposts_tag.text.strip() if reposts_tag else ""
     reposts = raw_reposts if raw_reposts.isdigit() else "0"
-    
-    likes_tag = elem.find("button", {"data-testid": "like"})
+
+    likes_tag = elem.find("button", {"data-testid": "like"}) if elem else None
     raw_likes = likes_tag.text.strip() if likes_tag else ""
     likes = raw_likes if raw_likes.isdigit() else "0"
-    
-    '''
-    reposts_tag = elem.find("button", {"data-testid": "retweet"})
-    raw_reposts = reposts_tag.text.strip() if reposts_tag else ""
-    reposts = raw_reposts if raw_reposts.isdigit() else "0"
-    '''
-    
-    # --- 5) Views ---
+
     views = "0"
-    # Busca un span que contenga la palabra "view" o "views"
-    label = elem.find(lambda t: t.name == "span" and "view" in t.get_text(strip=True).lower())
+    label = elem.find(lambda t: t.name == "span" and "view" in t.get_text(strip=True).lower()) if elem else None
     if label:
         pt = label.parent.get_text(" ", strip=True)
         v = re.search(r"([\d,]+)\s+view", pt, re.IGNORECASE)
-        if v:
-            views = v.group(1).replace(",", "")
-    
-    return tweet_id, text, fecha, replies, reposts, likes, views
-    #return tweet_id, f'"{text}"', fecha, replies, reposts, views
+        if v: views = v.group(1).replace(",", "")
+
+    # ← Hashtags del TWEET PRINCIPAL (por <a> y por texto)
+    ht_tweet, _, _, _ = extraer_entidades(text_tag)
+    hashtags_tweet = "|".join(ht_tweet) if ht_tweet else ""
+
+    return tweet_id, text, fecha, replies, reposts, likes, views, hashtags_tweet
+
 
 
 def limpiar_para_csv(texto: str) -> str:
@@ -217,7 +255,7 @@ def limpiar_para_csv(texto: str) -> str:
 def guardar_comentarios(
     tweet_id, tweet_text, soup, writer,
     fecha_pub, replies, reposts, likes, views,
-    tweet_owner_raw
+    tweet_owner_raw,hashtags_tweet=""
 ):
 
     '''
@@ -294,7 +332,7 @@ def guardar_comentarios(
             "views": views,
             #"hashtags_tweet": limpiar_para_csv(hashtags_tweet),
             "hashtags_tweet": hashtags_tweet,
-            "hashtags_comentario": ''  # vacío
+            "hashtags_comentario": hashtags_comentario
         })
         
         
@@ -431,7 +469,9 @@ def procesar_tweet_por_url(driver, url, tweets_procesados, writer):
     soup = BeautifulSoup(driver.page_source, "html.parser")
 
     # 5) Extraemos datos del tweet principal
-    tweet_id, tweet_text, fecha_pub, replies, reposts, likes, views = extraer_datos_tweet(soup)
+    #tweet_id, tweet_text, fecha_pub, replies, reposts, likes, views = extraer_datos_tweet(soup)
+    tweet_id, tweet_text, fecha_pub, replies, reposts, likes, views, hashtags_tweet = extraer_datos_tweet(soup)
+
     print(f"  💡 Extraído: id={tweet_id} replies={replies}")
 
     # 6) Evitar duplicados
@@ -450,11 +490,21 @@ def procesar_tweet_por_url(driver, url, tweets_procesados, writer):
     print(f"  👤 Autor original: {tweet_owner_raw}")
 
     # 8) Guardar comentarios
+    '''
     guardar_comentarios(
         tweet_id, tweet_text, soup, writer,
         fecha_pub, replies, reposts, likes, views,
         tweet_owner_raw
     )
+    '''
+    guardar_comentarios(
+        tweet_id, tweet_text, soup, writer,
+        fecha_pub, replies, reposts, likes, views,
+        tweet_owner_raw,
+        hashtags_tweet        # ← nuevo arg
+    )
+    
+    
 
     # 9) Cerrar y volver
     print("  🔙 Cerrando pestaña y volviendo…")
